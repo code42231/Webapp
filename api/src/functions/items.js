@@ -86,9 +86,10 @@ async function loadItems() {
   return items;
 }
 
-app.http("items", {
+// GET Route: Returns list of items
+app.http("getItems", {
   methods: ["GET"],
-  authLevel: "anonymous", // SWA's built-in routing handles access; see staticwebapp.config.json
+  authLevel: "anonymous",
   route: "items",
   handler: async (_request, context) => {
     try {
@@ -99,6 +100,43 @@ app.http("items", {
       return {
         status: 500,
         jsonBody: { error: "Failed to load items from Azure Blob Storage" },
+      };
+    }
+  },
+});
+
+// DELETE Route: Deletes a specific blob by name
+app.http("deleteItem", {
+  methods: ["DELETE"],
+  authLevel: "anonymous",
+  route: "items/{name}",
+  handler: async (request, context) => {
+    try {
+      const blobName = request.params.name;
+
+      if (!blobName) {
+        return { status: 400, jsonBody: { error: "Missing blob name parameter" } };
+      }
+
+      const client = getContainerClient();
+      const blobClient = client.getBlobClient(blobName);
+
+      // Delete the blob from Azure Blob Storage
+      const response = await blobClient.deleteIfExists();
+
+      if (!response.succeeded) {
+        return { status: 404, jsonBody: { error: "Blob not found" } };
+      }
+
+      // Invalidate in-memory cache so subsequent GET calls return fresh data
+      cache = { items: null, fetchedAt: 0 };
+
+      return { status: 200, jsonBody: { message: `Deleted ${blobName}` } };
+    } catch (err) {
+      context.error(err);
+      return {
+        status: 500,
+        jsonBody: { error: "Failed to delete item from Azure Blob Storage" },
       };
     }
   },

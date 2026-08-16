@@ -15,6 +15,7 @@ export default function ViewerPage() {
   const [items, setItems] = useState([]);
   const [index, setIndex] = useState(0);
   const [status, setStatus] = useState("loading"); // loading | ready | error | empty
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/api/items`)
@@ -36,6 +37,46 @@ export default function ViewerPage() {
 
   const goPrev = () => setIndex((i) => Math.max(0, i - 1));
   const goNext = () => setIndex((i) => Math.min(items.length - 1, i + 1));
+
+  const handleDelete = async () => {
+    // Identify the blob using current.id, current.name, or current.blobName
+    const blobIdentifier = current.id || current.name || current.blobName;
+
+    if (!blobIdentifier) {
+      alert("Unable to delete: Missing item identifier.");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to delete this item from Azure Blob Storage?")) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/items/${encodeURIComponent(blobIdentifier)}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) throw new Error(`Failed to delete item: ${res.status}`);
+
+      // Filter out deleted item from state
+      const updatedItems = items.filter((_, i) => i !== index);
+      setItems(updatedItems);
+
+      if (updatedItems.length === 0) {
+        setStatus("empty");
+      } else {
+        // Adjust current index safely if at the end of array
+        setIndex((i) => (i >= updatedItems.length ? updatedItems.length - 1 : i));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred while deleting the file.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <main>
@@ -60,7 +101,7 @@ export default function ViewerPage() {
               className="nav-arrow prev"
               aria-label="Previous image"
               onClick={goPrev}
-              disabled={index === 0}
+              disabled={index === 0 || isDeleting}
             >
               &#10094;
             </button>
@@ -82,7 +123,7 @@ export default function ViewerPage() {
               className="nav-arrow next"
               aria-label="Next image"
               onClick={goNext}
-              disabled={index === items.length - 1}
+              disabled={index === items.length - 1 || isDeleting}
             >
               &#10095;
             </button>
@@ -92,6 +133,13 @@ export default function ViewerPage() {
             <span>
               {index + 1} of {items.length}
             </span>
+            <button 
+              className="delete-button" 
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting…" : "Delete Item"}
+            </button>
             <span>{formatTimestamp(current.timestamp_utc)}</span>
           </div>
 
