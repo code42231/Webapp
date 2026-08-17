@@ -11,11 +11,15 @@ function formatTimestamp(ts) {
   }
 }
 
+const speechSupported =
+  typeof window !== "undefined" && "speechSynthesis" in window;
+
 export default function ViewerPage() {
   const [items, setItems] = useState([]);
   const [index, setIndex] = useState(0);
   const [status, setStatus] = useState("loading"); // loading | ready | error | empty
   const [isDeleting, setIsDeleting] = useState(false);
+  const [speakingField, setSpeakingField] = useState(null); // "extracted" | "translation" | null
 
   useEffect(() => {
     fetch(`${API_URL}/api/items`)
@@ -34,6 +38,38 @@ export default function ViewerPage() {
   }, []);
 
   const current = items[index];
+
+  // Stop any in-progress speech whenever we move to a different item
+  useEffect(() => {
+    if (speechSupported) window.speechSynthesis.cancel();
+    setSpeakingField(null);
+  }, [index]);
+
+  // Stop speech if the component unmounts mid-utterance
+  useEffect(() => {
+    return () => {
+      if (speechSupported) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const speak = (text, field, lang) => {
+    if (!speechSupported || !text) return;
+
+    // If this field is already speaking, treat the click as "stop"
+    if (speakingField === field) {
+      window.speechSynthesis.cancel();
+      setSpeakingField(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel(); // stop anything else that's playing
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.onend = () => setSpeakingField(null);
+    utterance.onerror = () => setSpeakingField(null);
+    setSpeakingField(field);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const goPrev = () => setIndex((i) => Math.max(0, i - 1));
   const goNext = () => setIndex((i) => Math.min(items.length - 1, i + 1));
@@ -145,12 +181,40 @@ export default function ViewerPage() {
 
           <section className="text-panel">
             <div className="text-box">
-              <h3>Extracted Text</h3>
+              <div className="text-box-header">
+                <h3>Extracted Text</h3>
+                {speechSupported && current.extracted_text && (
+                  <button
+                    className="listen-button"
+                    onClick={() =>
+                      speak(current.extracted_text, "extracted", "en-US")
+                    }
+                  >
+                    {speakingField === "extracted" ? "⏹ Stop" : "🔊 Listen"}
+                  </button>
+                )}
+              </div>
               <p>{current.extracted_text}</p>
             </div>
 
             <div className="text-box">
-              <h3>Spanish Translation</h3>
+              <div className="text-box-header">
+                <h3>Spanish Translation</h3>
+                {speechSupported && current.translation_to_spanish && (
+                  <button
+                    className="listen-button"
+                    onClick={() =>
+                      speak(
+                        current.translation_to_spanish,
+                        "translation",
+                        "es-ES"
+                      )
+                    }
+                  >
+                    {speakingField === "translation" ? "⏹ Stop" : "🔊 Listen"}
+                  </button>
+                )}
+              </div>
               <p>{current.translation_to_spanish}</p>
             </div>
           </section>
